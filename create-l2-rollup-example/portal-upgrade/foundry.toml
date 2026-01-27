@@ -1,0 +1,23 @@
+[profile.default]
+src = "lib/optimism-contracts/packages/contracts-bedrock/src"
+out = "out"
+libs = ["lib"]
+
+optimizer = true
+optimizer_runs = 5000
+evm_version = "cancun"
+
+remappings = [
+  "@openzeppelin/contracts-upgradeable/=lib/openzeppelin-contracts-upgradeable/contracts",
+  "@openzeppelin/contracts/=lib/openzeppelin-contracts/contracts",
+  "@rari-capital/solmate/=lib/solmate",
+  "@solady/=lib/solady/src",
+  "@solady-v0.0.245/=lib/solady/src",
+  "@lib-keccak/=lib/lib-keccak/contracts/lib",
+  "forge-std/=lib/forge-std/src",
+  "ds-test/=lib/forge-std/lib/ds-test/src",
+  "src/=lib/optimism-contracts/packages/contracts-bedrock/src/",
+  "interfaces/=lib/optimism-contracts/packages/contracts-bedrock/interfaces/"
+]
+
+ignored_error_codes = ["transient-storage", "code-size", "init-code-size", 5159]
