@@ -43,11 +43,11 @@ restart-%: ## Restart a specific service (e.g., make restart-batcher)
 	docker-compose restart $*
 
 clean: ## Remove all containers and volumes
-	@# Create minimal env files if they don't exist to avoid docker-compose errors
+	@# Ensure env files exist so docker-compose doesn't error, but preserve existing ones
 	@mkdir -p batcher proposer challenger sequencer
-	@echo "# Minimal env for cleanup" > batcher/.env 2>/dev/null || true
-	@echo "# Minimal env for cleanup" > proposer/.env 2>/dev/null || true
-	@echo "# Minimal env for cleanup" > challenger/.env 2>/dev/null || true
+	@[ -f batcher/.env ] || echo "# Minimal env for cleanup" > batcher/.env
+	@[ -f proposer/.env ] || echo "# Minimal env for cleanup" > proposer/.env
+	@[ -f challenger/.env ] || echo "# Minimal env for cleanup" > challenger/.env
 	docker-compose down -v --remove-orphans 2>/dev/null || true
 
 reset: ## Complete reset - removes all data and redeploys

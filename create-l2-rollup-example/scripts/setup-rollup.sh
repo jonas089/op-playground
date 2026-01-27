@@ -80,10 +80,9 @@ generate_addresses() {
             private_key=$(openssl rand -hex 32)
         done
 
-        # For this demo, we'll create a fake but valid Ethereum address
-        # In a real scenario, you'd derive the actual Ethereum address from the private key
-        # Create a 40-character hex address (20 bytes)
-        address="0x$(echo "$private_key" | head -c 40)"
+        # Derive the actual Ethereum address from the private key
+        address=$(cast wallet address --private-key "0x$private_key")
+        echo "$private_key" > "${role}_private_key.txt"
         echo "$address" > "${role}_address.txt"
         log_info "Created wallet for $role: $address"
     done
@@ -139,6 +138,8 @@ update_intent() {
     sed -i.bak "s|baseFeeVaultRecipient = .*|baseFeeVaultRecipient = \"$BASE_FEE_VAULT_ADDR\"|" .deployer/intent.toml
     sed -i.bak "s|l1FeeVaultRecipient = .*|l1FeeVaultRecipient = \"$L1_FEE_VAULT_ADDR\"|" .deployer/intent.toml
     sed -i.bak "s|sequencerFeeVaultRecipient = .*|sequencerFeeVaultRecipient = \"$SEQUENCER_FEE_VAULT_ADDR\"|" .deployer/intent.toml
+    sed -i.bak "s|operatorFeeVaultRecipient = .*|operatorFeeVaultRecipient = \"$SEQUENCER_FEE_VAULT_ADDR\"|" .deployer/intent.toml
+    sed -i.bak "s|chainFeesRecipient = .*|chainFeesRecipient = \"$BASE_FEE_VAULT_ADDR\"|" .deployer/intent.toml
     sed -i.bak "s|systemConfigOwner = .*|systemConfigOwner = \"$SYSTEM_CONFIG_ADDR\"|" .deployer/intent.toml
     sed -i.bak "s|unsafeBlockSigner = .*|unsafeBlockSigner = \"$UNSAFE_BLOCK_SIGNER_ADDR\"|" .deployer/intent.toml
     sed -i.bak "s|batcher = .*|batcher = \"$BATCHER_ADDR\"|" .deployer/intent.toml
