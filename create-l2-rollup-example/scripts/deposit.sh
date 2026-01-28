@@ -15,7 +15,7 @@ if [ -f "$ROOT_DIR/.env" ]; then
 fi
 
 # Configuration
-OPTIMISM_PORTAL="0xdf40156f6ac2e57dcdb1b2a2bda00f740499f909"
+OPTIMISM_PORTAL="0x876dddc89a5dcd8493fa9ee276035f134d6a8bff"
 L1_RPC_URL="${L1_RPC_URL:-https://ethereum-sepolia-rpc.publicnode.com}"
 L2_RPC_URL="${L2_RPC_URL:-http://localhost:8545}"
 DEPOSIT_AMOUNT="${1:-0.01ether}"  # Default 0.01 ETH

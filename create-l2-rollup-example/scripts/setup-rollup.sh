@@ -23,6 +23,16 @@ L1_CHAIN_ID=11155111  # Sepolia
 L2_CHAIN_ID_DECIMAL=${L2_CHAIN_ID:-16584}  # Default test chain ID (decimal)
 L2_CHAIN_ID=$(printf "0x%064x" "$L2_CHAIN_ID_DECIMAL")  # Convert to full 64-char hex format for TOML
 P2P_ADVERTISE_IP=${P2P_ADVERTISE_IP:-127.0.0.1}  # Default to localhost for local testing
+
+# Dispute game clock configuration (in seconds)
+# For testing: 1 minute max clock, 30 second extension
+# For production: use defaults (302400 / 10800 / 86400 / 604800)
+# Note: maxClockDuration must be >= max(clockExtension*2, clockExtension+challengePeriod)
+DISPUTE_MAX_CLOCK_DURATION=${DISPUTE_MAX_CLOCK_DURATION:-60}
+DISPUTE_CLOCK_EXTENSION=${DISPUTE_CLOCK_EXTENSION:-30}
+DISPUTE_CHALLENGE_PERIOD=${DISPUTE_CHALLENGE_PERIOD:-30}
+PROOF_MATURITY_DELAY=${PROOF_MATURITY_DELAY:-60}
+DISPUTE_GAME_FINALITY_DELAY=${DISPUTE_GAME_FINALITY_DELAY:-60}
 WORKSPACE_DIR="$(pwd)"
 ROLLUP_DIR="$WORKSPACE_DIR"
 DEPLOYER_DIR="$ROLLUP_DIR/deployer"
@@ -91,6 +101,78 @@ generate_addresses() {
     log_info "Addresses generated successfully, continuing to init..."
 }
 
+# Bootstrap custom OPCM with custom dispute game clock settings
+bootstrap_opcm() {
+    log_info "Bootstrapping custom OPCM with clock settings..."
+    log_info "  Max clock duration: ${DISPUTE_MAX_CLOCK_DURATION}s"
+    log_info "  Clock extension: ${DISPUTE_CLOCK_EXTENSION}s"
+    log_info "  Challenge period: ${DISPUTE_CHALLENGE_PERIOD}s"
+    log_info "  Proof maturity delay: ${PROOF_MATURITY_DELAY}s"
+    log_info "  Dispute game finality delay: ${DISPUTE_GAME_FINALITY_DELAY}s"
+
+    cd "$DEPLOYER_DIR"
+
+    # Read addresses for superchain roles
+    ADMIN_ADDR=$(cat addresses/admin_address.txt)
+    CHALLENGER_ADDR=$(cat addresses/challenger_address.txt)
+
+    # Step 1: Bootstrap superchain
+    log_info "Bootstrapping superchain configuration..."
+    op-deployer bootstrap superchain \
+        --l1-rpc-url "$L1_RPC_URL" \
+        --private-key "$PRIVATE_KEY" \
+        --superchain-proxy-admin-owner "$ADMIN_ADDR" \
+        --protocol-versions-owner "$ADMIN_ADDR" \
+        --guardian "$ADMIN_ADDR" \
+        --artifacts-locator "embedded" \
+        --outfile "addresses/superchain_output.json"
+
+    # Extract addresses from superchain output
+    SUPERCHAIN_CONFIG_PROXY=$(jq -r '.superchainConfigProxyAddress' addresses/superchain_output.json)
+    PROTOCOL_VERSIONS_PROXY=$(jq -r '.protocolVersionsProxyAddress' addresses/superchain_output.json)
+    SUPERCHAIN_PROXY_ADMIN=$(jq -r '.proxyAdminAddress' addresses/superchain_output.json)
+
+    log_info "Superchain deployed:"
+    log_info "  SuperchainConfigProxy: $SUPERCHAIN_CONFIG_PROXY"
+    log_info "  ProtocolVersionsProxy: $PROTOCOL_VERSIONS_PROXY"
+    log_info "  SuperchainProxyAdmin: $SUPERCHAIN_PROXY_ADMIN"
+
+    # Step 2: Bootstrap implementations with custom clock settings
+    log_info "Bootstrapping implementations with custom dispute game settings..."
+    op-deployer bootstrap implementations \
+        --l1-rpc-url "$L1_RPC_URL" \
+        --private-key "$PRIVATE_KEY" \
+        --superchain-config-proxy "$SUPERCHAIN_CONFIG_PROXY" \
+        --protocol-versions-proxy "$PROTOCOL_VERSIONS_PROXY" \
+        --superchain-proxy-admin "$SUPERCHAIN_PROXY_ADMIN" \
+        --l1-proxy-admin-owner "$ADMIN_ADDR" \
+        --challenger "$CHALLENGER_ADDR" \
+        --dispute-max-clock-duration "$DISPUTE_MAX_CLOCK_DURATION" \
+        --dispute-clock-extension "$DISPUTE_CLOCK_EXTENSION" \
+        --challenge-period-seconds "$DISPUTE_CHALLENGE_PERIOD" \
+        --proof-maturity-delay-seconds "$PROOF_MATURITY_DELAY" \
+        --dispute-game-finality-delay-seconds "$DISPUTE_GAME_FINALITY_DELAY" \
+        --artifacts-locator "embedded" \
+        --outfile "addresses/implementations_output.json"
+
+    # Extract OPCM address
+    OPCM_ADDRESS=$(jq -r '.opcmAddress' addresses/implementations_output.json)
+
+    if [ -z "$OPCM_ADDRESS" ] || [ "$OPCM_ADDRESS" = "null" ]; then
+        log_error "Failed to get OPCM address from bootstrap output"
+        log_error "Output: $(cat addresses/implementations_output.json)"
+        return 1
+    fi
+
+    log_success "Custom OPCM deployed: $OPCM_ADDRESS"
+
+    # Save for later use
+    echo "$OPCM_ADDRESS" > addresses/opcm_address.txt
+    echo "$SUPERCHAIN_CONFIG_PROXY" > addresses/superchain_config_proxy.txt
+    echo "$PROTOCOL_VERSIONS_PROXY" > addresses/protocol_versions_proxy.txt
+    echo "$SUPERCHAIN_PROXY_ADMIN" > addresses/superchain_proxy_admin.txt
+}
+
 # Initialize op-deployer
 init_deployer() {
     log_info "Initializing op-deployer..."
@@ -130,7 +212,8 @@ update_intent() {
     PROPOSER_ADDR=$(cat addresses/proposer_address.txt)
     CHALLENGER_ADDR=$(cat addresses/challenger_address.txt)
 
-    # Keep the default contract locators and opcmAddress from op-deployer init
+    # Read bootstrapped OPCM address
+    OPCM_ADDR=$(cat addresses/opcm_address.txt)
 
     # Update only the chain-specific fields in the existing intent.toml
     L2_CHAIN_ID_HEX=$(printf "0x%064x" "$L2_CHAIN_ID")
@@ -147,7 +230,22 @@ update_intent() {
     sed -i.bak "s|challenger = .*|challenger = \"$CHALLENGER_ADDR\"|" .deployer/intent.toml
     sed -i.bak "s|fundDevAccounts = .*|fundDevAccounts = true|" .deployer/intent.toml
 
-    log_success "Intent configuration updated"
+    # Update OPCM address to use our custom bootstrapped OPCM
+    sed -i.bak "s|opcmAddress = .*|opcmAddress = \"$OPCM_ADDR\"|" .deployer/intent.toml
+
+    # Add custom dispute parameters after the chain ID line
+    # First check if they already exist
+    if ! grep -q "faultGameMaxClockDuration" .deployer/intent.toml; then
+        sed -i.bak "/id = .*/a\\
+  faultGameClockExtension = ${DISPUTE_CLOCK_EXTENSION}\\
+  faultGameMaxClockDuration = ${DISPUTE_MAX_CLOCK_DURATION}\\
+  dangerouslyAllowCustomDisputeParameters = true" .deployer/intent.toml
+    fi
+
+    # Clean up backup files
+    rm -f .deployer/intent.toml.bak
+
+    log_success "Intent configuration updated with custom OPCM: $OPCM_ADDR"
 }
 
 # Deploy L1 contracts
@@ -485,6 +583,11 @@ main() {
     log_info "Starting OP Stack L2 Rollup deployment..."
     log_info "L2 Chain ID: $L2_CHAIN_ID"
     log_info "L1 Chain ID: $L1_CHAIN_ID"
+    log_info "Dispute game max clock: ${DISPUTE_MAX_CLOCK_DURATION}s"
+    log_info "Dispute game clock extension: ${DISPUTE_CLOCK_EXTENSION}s"
+    log_info "Dispute game challenge period: ${DISPUTE_CHALLENGE_PERIOD}s"
+    log_info "Proof maturity delay: ${PROOF_MATURITY_DELAY}s"
+    log_info "Dispute game finality delay: ${DISPUTE_GAME_FINALITY_DELAY}s"
 
     # Clean start - remove any existing deployer directory
     log_info "Cleaning up any existing deployment..."
@@ -494,6 +597,7 @@ main() {
     validate_main_env
     check_prerequisites
     generate_addresses
+    bootstrap_opcm
     init_deployer
     update_intent
     deploy_contracts

@@ -75,7 +75,7 @@ make restart
 ### Using Script
 
 ```bash
-./scripts/deposit.sh 0.005ether
+./scripts/deposit.sh 0.002ether
 ```
 
 ### Manual Deposit

@@ -37,6 +37,7 @@ L2_CROSS_DOMAIN_MESSENGER="0x4200000000000000000000000000000000000007"
 # Get L1 contract addresses
 PORTAL=$(jq -r '.opChainDeployments[0].OptimismPortalProxy' "$STATE_JSON")
 FACTORY=$(jq -r '.opChainDeployments[0].DisputeGameFactoryProxy' "$STATE_JSON")
+ANCHOR_REGISTRY=$(jq -r '.opChainDeployments[0].AnchorStateRegistryProxy' "$STATE_JSON")
 
 OUR_ADDR=$(cast wallet address --private-key $PK)
 
@@ -49,6 +50,7 @@ echo "  Our address:     $OUR_ADDR"
 echo "  L1 RPC:          $L1_RPC"
 echo "  L2 RPC:          $L2_RPC"
 echo "  OptimismPortal:  $PORTAL"
+echo "  AnchorRegistry:  $ANCHOR_REGISTRY"
 echo "  L2ToL1MessagePasser: $L2_TO_L1_MESSAGE_PASSER"
 echo ""
 
@@ -457,7 +459,7 @@ echo "--------------------------------------------"
 echo ""
 
 echo "Optional check:"
-echo "cast call 0x440eE8853273111b9B3aB46f9C1B9161E04D2a19 \\"
+echo "cast call $ANCHOR_REGISTRY \\"
 echo "  'isGameFinalized(address)(bool)' $FOUND_GAME_PROXY \\"
 echo "  --rpc-url $L1_RPC"
 echo ""
